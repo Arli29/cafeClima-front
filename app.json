@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "CafeClima",
+    "slug": "cafeclima",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "cafeclima",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#4a7c3f"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "co.cafeclima.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#4a7c3f"
+      },
+      "package": "co.cafeclima.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
