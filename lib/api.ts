@@ -1,22 +1,11 @@
-import { Platform } from 'react-native'
+import { Platform, Alert } from 'react-native'
 
 /**
  * CafeClima — Cliente API
- * Conecta con el backend Node.js/Express
- *
- * En desarrollo con emulador Android: usa 10.0.2.2
- * En desarrollo con celular físico:   usa la IP local del PC (ej: 192.168.1.X)
- * En desarrollo web:                  usa localhost
- * En producción:                       usa la URL del servidor desplegado
+ * Conecta con el backend en Render
  */
 
-// ← Cambia esto según tu entorno
-const BASE_URL = Platform.select({
-  android: 'https://cafeclima-backend.onrender.com/api',
-  ios: 'https://cafeclima-backend.onrender.com/api',
-  web: 'https://cafeclima-backend.onrender.com/api',
-  default: 'https://cafeclima-backend.onrender.com/api',
-})
+const BASE_URL = 'https://cafeclima-backend.onrender.com/api'
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -24,12 +13,6 @@ let _token: string | null = null
 
 export function setToken(token: string | null) {
   _token = token
-  if (!token && Platform.OS === 'web') {
-    // Limpiar almacenamiento local en web si es necesario
-    try {
-      localStorage.removeItem('cafeclima_token')
-    } catch (e) {}
-  }
 }
 
 export function getToken() {
@@ -47,18 +30,35 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${_token}`
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
-  })
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
+    })
 
-  const data = await res.json()
+    const data = await res.json()
 
-  if (!res.ok) {
-    throw new Error(data.error || `Error ${res.status}`)
+    if (!res.ok) {
+      const errorMsg = data.error || `Error ${res.status}`
+      // En móvil usamos Alert.alert para que el usuario vea qué pasó
+      if (Platform.OS !== 'web') {
+        Alert.alert('Error de conexión', errorMsg)
+      }
+      throw new Error(errorMsg)
+    }
+
+    return data as T
+  } catch (error: any) {
+    // Error de red (servidor caído o sin internet)
+    const msg = error.message === 'Network request failed'
+      ? 'No se pudo conectar con el servidor. Verifica tu internet.'
+      : error.message
+
+    if (Platform.OS !== 'web') {
+      Alert.alert('Error', msg)
+    }
+    throw new Error(msg)
   }
-
-  return data as T
 }
 
 // ─── AUTH ──────────────────────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ export interface RecomendacionAPI {
   tipo: string
   prioridad: 'urgente' | 'alta' | 'normal' | 'info'
   titulo: string
-  descripcion: string
+  description: string
   descripcion_ia?: string
   leida: boolean
   aplicada: boolean
