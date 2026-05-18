@@ -12,10 +12,10 @@ import { Platform } from 'react-native'
 
 // ← Cambia esto según tu entorno
 const BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:3000/api',
-  ios: 'http://localhost:3000/api',
-  web: 'http://localhost:3000/api',
-  default: 'http://localhost:3000/api',
+  android: 'https://cafeclima-backend.onrender.com/api',
+  ios: 'https://cafeclima-backend.onrender.com/api',
+  web: 'https://cafeclima-backend.onrender.com/api',
+  default: 'https://cafeclima-backend.onrender.com/api',
 })
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
