@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { View, StyleSheet, SafeAreaView, ActivityIndicator, Text, Platform } from 'react-native'
+import { View, StyleSheet, SafeAreaView, ActivityIndicator, Text } from 'react-native'
 import { AuthScreen } from '@/components/AuthScreen'
 import { HomeTab } from '@/components/HomeTab'
 import { ForecastTab } from '@/components/ForecastTab'
@@ -10,6 +10,7 @@ import { BottomNavigation, TabType } from '@/components/BottomNavigation'
 import { AppHeader } from '@/components/AppHeader'
 import { AlertDetailModal } from '@/components/AlertDetailModal'
 import { RecommendationDetailModal } from '@/components/RecommendationDetailModal'
+import { AppAlert } from '@/components/AppAlert'
 import { useApp } from '@/lib/store'
 import {
   fincas as fincasApi,
@@ -39,7 +40,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home')
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Modales
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [alertModalVisible, setAlertModalVisible] = useState(false)
 
@@ -50,8 +50,6 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [localRecs, setLocalRecs] = useState<Recommendation[]>([])
 
-  // Lista negra para evitar que alertas/recs resueltas reaparezcan en la sesión actual
-  // (El backend genera nuevas IDs, así que filtramos por título/mensaje)
   const dismissedItems = useRef<Set<string>>(new Set())
 
   // ── Cargar fincas al autenticar ──────────────────────────────────────────
@@ -64,13 +62,18 @@ export default function App() {
       return
     }
 
-    fincasApi.listar().then((res) => {
-      const lista = res.fincas || []
-      setMisFincas(lista)
-      if (lista.length > 0 && !fincaActiva) {
-        setFincaActiva(lista[0])
-      }
-    }).catch(console.error)
+    fincasApi.listar()
+      .then(res => {
+        const lista = res.fincas || []
+        setMisFincas(lista)
+        if (lista.length > 0 && !fincaActiva) {
+          setFincaActiva(lista[0])
+        }
+      })
+      .catch(err => {
+        // Error silencioso al cargar fincas — se mostrará la pantalla vacía
+        console.error('[App] Error cargando fincas:', err)
+      })
   }, [isAuthenticated])
 
   // ── Consultar clima cuando hay finca activa ───────────────────────────────
@@ -78,13 +81,14 @@ export default function App() {
     if (!fincaActiva || !isAuthenticated) return
     setLoadingClima(true)
     try {
-      const dataClima = await climaApi.consultar(fincaActiva.id, forceRefresh)
-      const dataPronostico = await climaApi.pronostico(fincaActiva.id)
+      const [dataClima, dataPronostico] = await Promise.all([
+        climaApi.consultar(fincaActiva.id, forceRefresh),
+        climaApi.pronostico(fincaActiva.id),
+      ])
 
       setClimaData(dataClima)
       setPronosticoData(dataPronostico)
 
-      // Filtrar y Adaptar Alertas (evitar las que el usuario ya cerró)
       const todasAlertasRaw = [
         ...(dataClima?.alertas || []),
         ...(dataClima?.alertasPredichas || []),
@@ -94,7 +98,6 @@ export default function App() {
       )
       setAlerts(alertasFiltradas)
 
-      // Filtrar y Adaptar Recomendaciones
       const todasRecsRaw = [
         ...(dataClima?.recomendaciones || []),
         ...(dataClima?.recomendacionesPreventivas || []),
@@ -104,8 +107,16 @@ export default function App() {
       )
       setLocalRecs(recsFiltradas)
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('[App] Error cargando clima:', err)
+
+      // Solo mostrar alerta si es un refresh manual, no en carga automática silenciosa
+      if (forceRefresh) {
+        const msg = err.message?.toLowerCase().includes('network') || err.message?.toLowerCase().includes('connect')
+          ? 'No se pudo conectar con el servidor. Verifica tu internet.'
+          : 'No se pudieron actualizar los datos climáticos. Intenta de nuevo.'
+        AppAlert.alert('Error al actualizar', msg)
+      }
     } finally {
       setLoadingClima(false)
     }
@@ -136,10 +147,12 @@ export default function App() {
     const alert = alerts.find(a => a.id === id)
     if (alert) {
       dismissedItems.current.add(`alerta:${alert.title}:${alert.description}`)
-      setAlerts((prev) => prev.filter((a) => a.id !== id))
+      setAlerts(prev => prev.filter(a => a.id !== id))
       try {
         await alertasApi.resolver(id)
-      } catch (e) {}
+      } catch (e) {
+        // Silencioso — el dismiss ya se aplicó localmente
+      }
     }
   }
 
@@ -147,10 +160,12 @@ export default function App() {
     const rec = localRecs.find(r => r.id === id)
     if (rec) {
       dismissedItems.current.add(`rec:${rec.title}`)
-      setLocalRecs((prev) => prev.filter((r) => r.id !== id))
+      setLocalRecs(prev => prev.filter(r => r.id !== id))
       try {
         await recsApi.marcarAplicada(id)
-      } catch (e) {}
+      } catch (e) {
+        // Silencioso
+      }
     }
   }
 
@@ -159,19 +174,17 @@ export default function App() {
   }
 
   const handleFincaCreada = async (finca: Finca) => {
-    setMisFincas((prev) => [...prev, finca])
+    setMisFincas(prev => [...prev, finca])
     setFincaActiva(finca)
   }
 
   const handleFincaActualizada = (finca: Finca) => {
-    setMisFincas((prev) => prev.map((f) => (f.id === finca.id ? finca : f)))
-    if (fincaActiva?.id === finca.id) {
-      setFincaActiva(finca)
-    }
+    setMisFincas(prev => prev.map(f => f.id === finca.id ? finca : f))
+    if (fincaActiva?.id === finca.id) setFincaActiva(finca)
   }
 
   const handleFincaEliminada = (id: string) => {
-    const resto = misFincas.filter((f) => f.id !== id)
+    const resto = misFincas.filter(f => f.id !== id)
     setMisFincas(resto)
     if (fincaActiva?.id === id) {
       setFincaActiva(resto[0] ?? null)
@@ -182,7 +195,7 @@ export default function App() {
     }
   }
 
-  // ── Derivar datos para componentes ────────────────────────────────────────
+  // ── Derivar datos ─────────────────────────────────────────────────────────
   const weather: WeatherData = climaData
     ? adaptarClima(climaData)
     : { temperature: 0, humidity: 0, precipitation: 0, windSpeed: 0, condition: 'partly-cloudy', uvIndex: 0, pressure: 1013, timestamp: new Date() }
@@ -195,7 +208,7 @@ export default function App() {
     ? `${fincaActiva.nombre} · ${fincaActiva.altitud_msnm ?? '?'} msnm`
     : 'Sierra Nevada, Magdalena'
 
-  // Pantalla de carga mientras se inicializa el estado (Web)
+  // Pantalla de carga inicial
   if (!isInitialized) {
     return (
       <View style={[styles.loadingCenter, { backgroundColor: colors.background }]}>
@@ -204,7 +217,6 @@ export default function App() {
     )
   }
 
-  // ── Sin autenticar ────────────────────────────────────────────────────────
   if (!isAuthenticated) {
     return <AuthScreen onAuthenticated={() => {}} />
   }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   ScrollView, View, Text, TouchableOpacity, StyleSheet, Modal,
-  TextInput, KeyboardAvoidingView, Platform, Alert as RNAlert, ActivityIndicator,
+  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { Recommendation } from '@/lib/types'
@@ -9,6 +9,7 @@ import type { Finca } from '@/lib/api'
 import { fincas as fincasApi } from '@/lib/api'
 import { RecommendationsList } from './RecommendationsList'
 import { colors, spacing, radius, fontSize } from '@/lib/theme'
+import { AppAlert } from '@/components/AppAlert'
 
 interface Props {
   fincas: Finca[]
@@ -41,41 +42,52 @@ export function FarmTab({ fincas, fincaActiva, recommendations, onFincaCreada, o
       if (editingFinca) {
         const res = await fincasApi.editar(editingFinca.id, data)
         onFincaActualizada(res.finca)
+        AppAlert.alert('¡Listo!', 'Los datos de tu finca fueron actualizados.')
       } else {
         const res = await fincasApi.crear(data)
         onFincaCreada(res.finca)
+        AppAlert.alert('Finca registrada', 'Tu finca fue registrada exitosamente. Ya puedes consultar el clima.')
       }
       setFormVisible(false)
     } catch (err: any) {
-      RNAlert.alert('Error', err.message || 'No se pudo guardar la finca')
+      const msg = err.message?.toLowerCase().includes('network') || err.message?.toLowerCase().includes('connect')
+        ? 'No se pudo conectar con el servidor. Verifica tu internet.'
+        : err.message || 'No se pudo guardar la finca. Intenta de nuevo.'
+      AppAlert.alert('Error', msg)
     }
   }
 
   const handleDelete = (id: string) => {
-    RNAlert.alert('Eliminar finca', '¿Estás seguro? Se borrarán todos los datos asociados.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar', style: 'destructive',
-        onPress: async () => {
-          try {
-            await fincasApi.eliminar(id)
-            onFincaEliminada(id)
-            setDetailFinca(null)
-          } catch (err: any) {
-            RNAlert.alert('Error', err.message || 'No se pudo eliminar')
-          }
+    AppAlert.alert(
+      'Eliminar finca',
+      '¿Estás seguro? Se borrarán todos los datos climáticos y alertas asociadas a esta finca.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await fincasApi.eliminar(id)
+              onFincaEliminada(id)
+              setDetailFinca(null)
+            } catch (err: any) {
+              const msg = err.message?.toLowerCase().includes('network')
+                ? 'Sin conexión. Intenta de nuevo.'
+                : err.message || 'No se pudo eliminar la finca.'
+              AppAlert.alert('Error al eliminar', msg)
+            }
+          },
         },
-      },
-    ])
+      ]
+    )
   }
 
-  // Tomar la primera finca si existe (solo permitimos una)
-  const currentFinca = (fincas && fincas.length > 0) ? fincas[0] : null
+  const currentFinca = fincas && fincas.length > 0 ? fincas[0] : null
 
   return (
     <>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Mi Finca</Text>
           {!currentFinca && (
@@ -132,7 +144,6 @@ export function FarmTab({ fincas, fincaActiva, recommendations, onFincaCreada, o
           </TouchableOpacity>
         )}
 
-        {/* Recomendaciones */}
         {recommendations && recommendations.length > 0 && (
           <View style={{ marginTop: spacing.sm }}>
             <RecommendationsList recommendations={recommendations} />
@@ -157,7 +168,7 @@ export function FarmTab({ fincas, fincaActiva, recommendations, onFincaCreada, o
   )
 }
 
-/* ── Finca Form Modal (Add/Edit) ── */
+/* ── Finca Form Modal ── */
 function FincaFormModal({ visible, finca, onClose, onSave }: {
   visible: boolean
   finca: Finca | null
@@ -186,38 +197,52 @@ function FincaFormModal({ visible, finca, onClose, onSave }: {
     }
   }, [visible, finca])
 
-  const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const handleGetCurrentLocation = () => {
     if (Platform.OS === 'web') {
       if (!navigator.geolocation) {
-        RNAlert.alert('Error', 'Tu navegador no soporta geolocalización')
+        AppAlert.alert('No disponible', 'Tu navegador no soporta geolocalización.')
         return
       }
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          set('latitud', pos.coords.latitude.toString())
-          set('longitud', pos.coords.longitude.toString())
+          set('latitud', pos.coords.latitude.toFixed(6))
+          set('longitud', pos.coords.longitude.toFixed(6))
         },
-        (err) => {
-          RNAlert.alert('Error', 'No se pudo obtener la ubicación. Asegúrate de dar permisos.')
+        () => {
+          AppAlert.alert(
+            'Sin permiso de ubicación',
+            'No se pudo obtener tu ubicación. Asegúrate de dar permisos al navegador e inténtalo de nuevo.'
+          )
         }
       )
     } else {
-      RNAlert.alert('Info', 'Geolocalización GPS activa.')
+      // En móvil nativo usaría expo-location; por ahora informamos
+      AppAlert.alert('GPS', 'Usa el mapa para ingresar las coordenadas de tu finca manualmente.')
     }
   }
 
   const handleSubmit = async () => {
-    if (!form.nombre.trim() || !form.latitud || !form.longitud) {
-      RNAlert.alert('Datos requeridos', 'El nombre, latitud y longitud son obligatorios')
+    if (!form.nombre.trim()) {
+      AppAlert.alert('Campo requerido', 'El nombre de la finca es obligatorio.')
+      return
+    }
+    if (!form.latitud || !form.longitud) {
+      AppAlert.alert('Ubicación requerida', 'Debes ingresar la latitud y longitud de tu finca.')
+      return
+    }
+    const lat = parseFloat(form.latitud)
+    const lng = parseFloat(form.longitud)
+    if (isNaN(lat) || isNaN(lng)) {
+      AppAlert.alert('Coordenadas inválidas', 'La latitud y longitud deben ser números válidos. Ejemplo: 11.2408, -74.1990')
       return
     }
     setLoading(true)
     await onSave({
-      nombre: form.nombre,
-      latitud: parseFloat(form.latitud),
-      longitud: parseFloat(form.longitud),
+      nombre: form.nombre.trim(),
+      latitud: lat,
+      longitud: lng,
       altitud_msnm: form.altitud_msnm ? parseFloat(form.altitud_msnm) : undefined,
       hectareas: form.hectareas ? parseFloat(form.hectareas) : undefined,
       variedad_cafe: form.variedad_cafe || 'Castillo',
@@ -237,26 +262,50 @@ function FincaFormModal({ visible, finca, onClose, onSave }: {
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <ModalInput label="Nombre de la finca *" placeholder="Ej: Finca El Paraíso" value={form.nombre} onChangeText={(v) => set('nombre', v)} />
-
+            <ModalInput
+              label="Nombre de la finca *"
+              placeholder="Ej: Finca El Paraíso"
+              value={form.nombre}
+              onChangeText={(v: string) => set('nombre', v)}
+            />
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, marginBottom: spacing.md }}>
               <View style={{ flex: 1 }}>
-                <ModalInput label="Latitud *" placeholder="11.2408" value={form.latitud} onChangeText={(v) => set('latitud', v)} keyboardType="decimal-pad" containerStyle={{ marginBottom: 0 }} />
+                <ModalInput
+                  label="Latitud *"
+                  placeholder="11.2408"
+                  value={form.latitud}
+                  onChangeText={(v: string) => set('latitud', v)}
+                  keyboardType="decimal-pad"
+                  containerStyle={{ marginBottom: 0 }}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <ModalInput label="Longitud *" placeholder="-74.1990" value={form.longitud} onChangeText={(v) => set('longitud', v)} keyboardType="decimal-pad" containerStyle={{ marginBottom: 0 }} />
+                <ModalInput
+                  label="Longitud *"
+                  placeholder="-74.1990"
+                  value={form.longitud}
+                  onChangeText={(v: string) => set('longitud', v)}
+                  keyboardType="decimal-pad"
+                  containerStyle={{ marginBottom: 0 }}
+                />
               </View>
               <TouchableOpacity style={styles.gpsBtn} onPress={handleGetCurrentLocation}>
                 <Ionicons name="locate" size={20} color={colors.primary} />
               </TouchableOpacity>
             </View>
-
-            <ModalInput label="Altitud (msnm)" placeholder="1450" value={form.altitud_msnm} onChangeText={(v) => set('altitud_msnm', v)} keyboardType="numeric" />
-            <ModalInput label="Área (hectáreas)" placeholder="2.5" value={form.hectareas} onChangeText={(v) => set('hectareas', v)} keyboardType="decimal-pad" />
-            <ModalInput label="Variedad de café" placeholder="Castillo, Caturra, Colombia..." value={form.variedad_cafe} onChangeText={(v) => set('variedad_cafe', v)} />
+            <ModalInput label="Altitud (msnm)" placeholder="1450" value={form.altitud_msnm} onChangeText={(v: string) => set('altitud_msnm', v)} keyboardType="numeric" />
+            <ModalInput label="Área (hectáreas)" placeholder="2.5" value={form.hectareas} onChangeText={(v: string) => set('hectareas', v)} keyboardType="decimal-pad" />
+            <ModalInput label="Variedad de café" placeholder="Castillo, Caturra, Colombia..." value={form.variedad_cafe} onChangeText={(v: string) => set('variedad_cafe', v)} />
           </ScrollView>
-          <TouchableOpacity style={[modalStyles.submitBtn, loading && { opacity: 0.7 }]} onPress={handleSubmit} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={modalStyles.submitText}>{finca ? 'Guardar Cambios' : 'Registrar Finca'}</Text>}
+          <TouchableOpacity
+            style={[modalStyles.submitBtn, loading && { opacity: 0.7 }]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={modalStyles.submitText}>{finca ? 'Guardar Cambios' : 'Registrar Finca'}</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -284,17 +333,15 @@ function FincaDetailModal({ finca, onClose, onEdit, onDelete }: {
         </View>
         <View style={detailStyles.grid}>
           <DetailItem icon="location-outline" label="Latitud / Longitud" value={`${finca.latitud}, ${finca.longitud}`} />
-          {finca.altitud_msnm && <DetailItem icon="trending-up-outline" label="Altitud" value={`${finca.altitud_msnm} msnm`} />}
-          {finca.hectareas && <DetailItem icon="resize-outline" label="Área" value={`${finca.hectareas} ha`} />}
+          {finca.altitud_msnm != null && <DetailItem icon="trending-up-outline" label="Altitud" value={`${finca.altitud_msnm} msnm`} />}
+          {finca.hectareas != null && <DetailItem icon="resize-outline" label="Área" value={`${finca.hectareas} ha`} />}
           {finca.variedad_cafe && <DetailItem icon="cafe-outline" label="Variedad" value={finca.variedad_cafe} />}
         </View>
-
         <View style={{ marginTop: 24, gap: spacing.md }}>
           <TouchableOpacity style={detailStyles.editBtn} onPress={() => onEdit(finca)}>
             <Ionicons name="create-outline" size={18} color={colors.foreground} />
             <Text style={detailStyles.editBtnText}>Editar información</Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={detailStyles.deleteBtn} onPress={() => onDelete(finca.id)}>
             <Ionicons name="trash-outline" size={18} color={colors.destructive} />
             <Text style={detailStyles.deleteBtnText}>Eliminar finca</Text>
@@ -314,13 +361,7 @@ function ModalInput({ label, placeholder, value, onChangeText, keyboardType, con
           borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
           paddingHorizontal: spacing.md, height: 44, fontSize: fontSize.base,
           color: colors.foreground, backgroundColor: colors.card,
-          ...Platform.select({
-            web: {
-              outlineStyle: 'none',
-              outline: 'none',
-              boxShadow: 'none'
-            } as any
-          })
+          ...Platform.select({ web: { outlineStyle: 'none', outline: 'none', boxShadow: 'none' } as any }),
         }}
         placeholder={placeholder}
         placeholderTextColor={colors.mutedForeground}

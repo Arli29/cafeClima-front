@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import {
   ScrollView, View, Text, TouchableOpacity, Switch, StyleSheet,
-  Modal, Alert, TextInput, ActivityIndicator, Platform
+  Modal, TextInput, ActivityIndicator, Platform
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize } from '@/lib/theme'
 import { auth } from '@/lib/api'
 import { useApp } from '@/lib/store'
+import { AppAlert } from '@/components/AppAlert'
 
 interface Props {
   onLogout?: () => void
@@ -20,39 +21,43 @@ export function SettingsTab({ onLogout, usuario }: Props) {
   const [alertPest, setAlertPest] = useState(true)
   const [alertFrost, setAlertFrost] = useState(true)
 
-  // Account Edit State
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editName, setEditName] = useState(usuario?.nombre || '')
   const [isSaving, setIsSaving] = useState(false)
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      if (confirm('¿Estás seguro que deseas salir?')) {
-        onLogout?.()
-      }
-    } else {
-      Alert.alert('Cerrar sesión', '¿Estás seguro que deseas salir?', [
+    AppAlert.alert(
+      'Cerrar sesión',
+      '¿Estás seguro que deseas salir de tu cuenta?',
+      [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Salir', style: 'destructive', onPress: onLogout },
-      ])
-    }
+        {
+          text: 'Cerrar sesión',
+          style: 'destructive',
+          onPress: onLogout,
+        },
+      ]
+    )
   }
 
   const handleUpdateProfile = async () => {
     if (!editName.trim()) {
-      Alert.alert('Error', 'El nombre no puede estar vacío')
+      AppAlert.alert('Campo requerido', 'El nombre no puede estar vacío.')
       return
     }
     setIsSaving(true)
     try {
-      await auth.actualizarPerfil({ nombre: editName })
+      await auth.actualizarPerfil({ nombre: editName.trim() })
       if (usuario) {
-        updateUsuario({ ...usuario, nombre: editName })
+        updateUsuario({ ...usuario, nombre: editName.trim() })
       }
       setEditModalVisible(false)
-      Alert.alert('Éxito', 'Perfil actualizado correctamente')
+      AppAlert.alert('¡Listo!', 'Tu perfil fue actualizado correctamente.')
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'No se pudo actualizar el perfil')
+      const msg = err.message?.toLowerCase().includes('network') || err.message?.toLowerCase().includes('connect')
+        ? 'No se pudo conectar con el servidor. Verifica tu internet.'
+        : err.message || 'No se pudo actualizar el perfil. Intenta de nuevo.'
+      AppAlert.alert('Error al actualizar', msg)
     } finally {
       setIsSaving(false)
     }
@@ -136,7 +141,12 @@ export function SettingsTab({ onLogout, usuario }: Props) {
       </ScrollView>
 
       {/* Account Edit Modal */}
-      <Modal visible={editModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditModalVisible(false)}>
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
         <View style={styles.modalContainer}>
           <View style={styles.modalHandle} />
           <View style={styles.modalHeader}>
@@ -154,13 +164,12 @@ export function SettingsTab({ onLogout, usuario }: Props) {
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="Tu nombre"
-                {...Platform.select({
-                  web: {
-                    outlineStyle: 'none',
-                    outline: 'none',
-                    boxShadow: 'none'
-                  } as any
-                })}
+                placeholderTextColor={colors.mutedForeground}
+                {...(Platform.OS === 'web' ? {
+                  outlineStyle: 'none',
+                  outline: 'none',
+                  boxShadow: 'none',
+                } as any : {})}
               />
             </View>
 
@@ -179,7 +188,10 @@ export function SettingsTab({ onLogout, usuario }: Props) {
             onPress={handleUpdateProfile}
             disabled={isSaving}
           >
-            {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Guardar Cambios</Text>}
+            {isSaving
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.saveBtnText}>Guardar Cambios</Text>
+            }
           </TouchableOpacity>
         </View>
       </Modal>
@@ -220,8 +232,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: `${colors.destructive}30`, backgroundColor: colors.destructiveLight,
   },
   logoutText: { fontSize: fontSize.base, color: colors.destructive, fontWeight: '600' },
-
-  // Modal Edit styles
   modalContainer: { flex: 1, backgroundColor: colors.background, padding: spacing.xl },
   modalHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.xl },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },

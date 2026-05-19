@@ -2,7 +2,7 @@
  * Estado global de la app — sin librerías externas, solo React Context
  * Guarda: sesión del usuario, finca activa, datos de clima
  */
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
 import { setToken, auth } from './api'
 import type { Finca, ClimaResponse, PronosticoResponse } from './api'
 import { Platform } from 'react-native'
@@ -19,7 +19,6 @@ interface AppState {
   // UI
   isLoadingClima: boolean
   errorClima: string | null
-  isInitialized: boolean
 }
 
 interface AppActions {
@@ -36,37 +35,31 @@ interface AppActions {
 const AppContext = createContext<(AppState & AppActions) | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>({
-    token: null,
-    usuario: null,
-    fincaActiva: null,
-    climaData: null,
-    pronosticoData: null,
-    isLoadingClima: false,
-    errorClima: null,
-    isInitialized: false,
-  })
+  // Inicialización síncrona para evitar parpadeos o bloqueos
+  const [state, setState] = useState<AppState>(() => {
+    let token = null
+    let usuario = null
 
-  // Al cargar la app, intentar recuperar el token de localStorage (Web)
-  useEffect(() => {
     if (Platform.OS === 'web') {
       try {
-        const savedToken = localStorage.getItem('cafeclima_token')
+        token = localStorage.getItem('cafeclima_token')
         const savedUser = localStorage.getItem('cafeclima_user')
-        if (savedToken && savedUser) {
-          const user = JSON.parse(savedUser)
-          setToken(savedToken)
-          setState(s => ({ ...s, token: savedToken, usuario: user, isInitialized: true }))
-        } else {
-          setState(s => ({ ...s, isInitialized: true }))
-        }
-      } catch (e) {
-        setState(s => ({ ...s, isInitialized: true }))
-      }
-    } else {
-      setState(s => ({ ...s, isInitialized: true }))
+        if (savedUser) usuario = JSON.parse(savedUser)
+      } catch (e) {}
     }
-  }, [])
+
+    if (token) setToken(token)
+
+    return {
+      token,
+      usuario,
+      fincaActiva: null,
+      climaData: null,
+      pronosticoData: null,
+      isLoadingClima: false,
+      errorClima: null,
+    }
+  })
 
   const login = useCallback((token: string, usuario: AppState['usuario']) => {
     setToken(token)
@@ -80,26 +73,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    // Intentar avisar al backend (opcional, no bloqueante)
+    // 1. Intentar avisar al backend
     try {
-      if (state.token) {
-        await auth.logout()
-      }
-    } catch (e) {
-      console.warn('[Store] Logout endpoint error:', e)
-    }
+      await auth.logout()
+    } catch (e) {}
 
-    // Limpiar siempre localmente
+    // 2. Limpiar almacenamiento
     setToken(null)
     if (Platform.OS === 'web') {
       try {
         localStorage.removeItem('cafeclima_token')
         localStorage.removeItem('cafeclima_user')
-        // Forzar recarga en web para limpiar cache y sockets si los hubiera
+        // En web, la forma más segura de limpiar TODO es recargar
         window.location.href = '/'
+        return // La página se recargará, no hace falta seguir
       } catch (e) {}
     }
 
+    // 3. Resetear estado (para mobile)
     setState({
       token: null,
       usuario: null,
@@ -108,9 +99,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pronosticoData: null,
       isLoadingClima: false,
       errorClima: null,
-      isInitialized: true,
     })
-  }, [state.token])
+  }, [])
 
   const updateUsuario = useCallback((usuario: AppState['usuario']) => {
     if (Platform.OS === 'web' && usuario) {

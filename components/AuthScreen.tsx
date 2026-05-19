@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors, spacing, radius, fontSize } from '@/lib/theme'
 import { auth } from '@/lib/api'
 import { useApp } from '@/lib/store'
+import { AppAlert } from '@/components/AppAlert'
 
 type AuthMode = 'login' | 'register'
 
@@ -46,9 +47,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
       if (mode === 'login') {
         const res = await auth.login(formData.email, formData.password)
         if (Platform.OS === 'web') {
-          try {
-            localStorage.setItem('cafeclima_token', res.token)
-          } catch (e) {}
+          try { localStorage.setItem('cafeclima_token', res.token) } catch (e) {}
         }
         login(res.token, {
           id: res.usuario.id,
@@ -67,10 +66,23 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         onAuthenticated()
       }
     } catch (err: any) {
-      Alert.alert(
-        mode === 'login' ? 'Error al iniciar sesión' : 'Error al registrarse',
-        err.message || 'Ocurrió un error. Intenta de nuevo.'
-      )
+      // Mensajes más amigables según el error
+      const rawMsg: string = err.message || ''
+      let title = mode === 'login' ? 'Error al iniciar sesión' : 'Error al registrarse'
+      let msg = 'Ocurrió un error inesperado. Intenta de nuevo.'
+
+      if (rawMsg.toLowerCase().includes('contraseña') || rawMsg.toLowerCase().includes('password') || rawMsg.toLowerCase().includes('credentials') || rawMsg.toLowerCase().includes('invalid')) {
+        msg = 'Correo o contraseña incorrectos. Verifica tus datos.'
+      } else if (rawMsg.toLowerCase().includes('correo') || rawMsg.toLowerCase().includes('email') || rawMsg.toLowerCase().includes('already') || rawMsg.toLowerCase().includes('existe')) {
+        msg = 'Este correo ya está registrado. Intenta iniciar sesión.'
+      } else if (rawMsg.toLowerCase().includes('network') || rawMsg.toLowerCase().includes('servidor') || rawMsg.toLowerCase().includes('connect')) {
+        title = 'Sin conexión'
+        msg = 'No se pudo conectar con el servidor. Verifica tu internet e intenta de nuevo.'
+      } else if (rawMsg) {
+        msg = rawMsg
+      }
+
+      AppAlert.alert(title, msg, [{ text: 'Entendido', style: 'default' }])
     } finally {
       setIsLoading(false)
     }

@@ -51,14 +51,18 @@ export function AlertsTab({ initialAlerts }: Props) {
   const [selected, setSelected] = useState<Alert | null>(null)
 
   const handleMarkAsRead = (id: string) => {
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, isRead: true } : a)))
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a))
   }
 
-  const unread = alerts.filter((a) => !a.isRead).length
+  const unread = alerts.filter(a => !a.isRead).length
 
   return (
     <>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.summaryRow}>
           <Text style={styles.subtitle}>{alerts.length} alertas total</Text>
           {unread > 0 && (
@@ -68,7 +72,17 @@ export function AlertsTab({ initialAlerts }: Props) {
           )}
         </View>
 
-        {alerts.map((alert) => (
+        {alerts.length === 0 && (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="checkmark-circle-outline" size={36} color={colors.success} />
+            </View>
+            <Text style={styles.emptyTitle}>Todo en orden</Text>
+            <Text style={styles.emptyDesc}>No tienes alertas activas por el momento.</Text>
+          </View>
+        )}
+
+        {alerts.map(alert => (
           <TouchableOpacity
             key={alert.id}
             style={[
@@ -120,6 +134,21 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: fontSize.sm, color: colors.mutedForeground },
   badge: { backgroundColor: `${colors.destructive}20`, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: fontSize.xs, fontWeight: '600', color: colors.destructive },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    gap: spacing.md,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.full,
+    backgroundColor: `${colors.success}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: { fontSize: fontSize.lg, fontWeight: '600', color: colors.foreground },
+  emptyDesc: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: 'center' },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.card,
@@ -131,14 +160,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   cardUnread: { backgroundColor: colors.card },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
+  iconBox: { width: 40, height: 40, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   body: { flex: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   alertTitle: { flex: 1, fontSize: fontSize.sm, color: colors.foreground },
